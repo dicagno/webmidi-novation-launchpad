@@ -1,5 +1,6 @@
 let launchpads = [];
 
+// reference: https://fael-downloads-prod.focusrite.com/customer/prod/downloads/launchpad-programmers-reference.pdf
 const LED_VALUES = {
     OFF: 12,
     RED_LOW: 13,
