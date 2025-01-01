@@ -1,4 +1,6 @@
-let launchpads = [];
+window.launchpads = [];
+window.isRunning = false;
+window.mode = 2;
 
 // reference: https://fael-downloads-prod.focusrite.com/customer/prod/downloads/launchpad-programmers-reference.pdf
 const LED_VALUES = {
@@ -30,10 +32,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check if Web MIDI is supported
     if (navigator.requestMIDIAccess) {
         // Prompt the user to connect a MIDI device
-        const connectBtn = document.getElementById('connectBtn');
-        const startSequenceBtn = document.getElementById('startSequenceBtn');
+        const connectBtn = document.querySelector('button.connect');
+        const startSequenceBtn = document.querySelector('button.startSequence');
+        const stopSequenceBtn = document.querySelector('button.stopSequence');
         connectBtn.addEventListener('click', connectMIDI);
-        startSequenceBtn.addEventListener('click', onClick);
+        startSequenceBtn.addEventListener('click', startSequencer);
+        stopSequenceBtn.addEventListener('click', stopSequencer);
     } else {
         console.log('Web MIDI is not supported in this browser.');
     }
@@ -57,39 +61,50 @@ function connectMIDI() {
 
 const stepPos = [0, 0, 0, 0, 0, 0, 0, 0];
 
-async function runSequenceAtRowId([rowFrom, rowTo], color, interval = 100) {
+async function runSequenceAtRowId([rowFrom, rowTo], color, interval = 500) {
     for (let colId = 0; colId < 8; colId++) {
         for (let rowId = rowFrom; rowId <= rowTo; rowId++) {
             const row = launchpadMap[rowId];
-            const midiOutput = launchpads[0].output;
+            let midiOutput = window.launchpads[0].output;
+            if (midiOutput.connection === 'closed') {
+                midiOutput.open();
+            }
             const pixelId = row[colId];
             midiOutput.send([0x90, pixelId, color]);
         }
         await sleep(interval);
         for (let rowId = rowFrom; rowId <= rowTo; rowId++) {
             const row = launchpadMap[rowId];
-            const midiOutput = launchpads[0].output;
+            const midiOutput = window.launchpads[0].output;
             const pixelId = row[colId];
             midiOutput.send([0x90, pixelId, LED_VALUES.OFF]);
         }
     }
 }
 
-async function onClick() {
-    for (; ;) {
+async function startSequencer() {
+    while (window.isRunning) {
         await runSequenceAtRowId([0, 7], LED_VALUES.RED, 500);
     }
 }
 
+function stopSequencer() {
+    window.isRunning = false;
+}
+
 function onMIDISuccess(midiAccess) {
     const outputs = midiAccess.outputs.values();
+    const inputs = midiAccess.inputs.values();
+    let i = 0;
     for (let output of outputs) {
-        console.log(output.name)
-        console.log(outputs)
+        console.log(output.name);
+        console.log(outputs);
         if (output.name === 'Launchpad') {
-            //TODO: add respective input
-            launchpads.push({output});
+            const input = Array.from(inputs)[i];
+            window.launchpads.push({ output, input });
+            input.addEventListener('midimessage', onMIDIMessage);
         }
+        i++;
     }
 
     console.log('MIDI connection established.');
@@ -102,5 +117,13 @@ function onMIDIFailure(error) {
 function onMIDIMessage(event) {
     // Handle MIDI messages here
     // For example:
-    console.log('MIDI Message:', event.data);
+        let midiOutput = window.launchpads[0].output;
+        if (midiOutput.connection === 'closed') {
+            midiOutput.open();
+        }
+        midiOutput.send([0x90, event.data[1], event.data]);
+    if(window.mode === 2) {
+        console.log('output', window.launchpads[0].output);
+        window.launchpads[0].output.send([0x90, event.data[1], event.data]);
+    }
 }
